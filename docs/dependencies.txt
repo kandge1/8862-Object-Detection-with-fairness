@@ -1,0 +1,8 @@
+This is a placeholder file, it does not contain any important information, I only have it here to push a \code folder
+
+Hi Lol
+
+let's have a standard defined for using carla, use python, and use a computer, yes, very insightful
+
+anyway, i'm using python 3.10 and cala verison carla-0.9.16-cp312-cp312-win_amd64.whl
+
