@@ -14,17 +14,30 @@ model_names = [
 
 print(f"--- Starting Downloads to: {model_path.absolute()} ---")
 
+# Ensure any temporary files created by Ultralytics are written inside models/legacy
+original_cwd = os.getcwd()
+
 for name in model_names:
     full_model_path = model_path / name
-    
+
     if full_model_path.exists():
         print(f"[SKIP] {name} already exists in {target_dir}.")
-    else:
-        print(f"[DOWNLOADING] {name}...")
+        continue
+
+    print(f"[DOWNLOADING] {name}...")
+    try:
+        # Change into the target directory so YOLO(name) writes files there
+        os.chdir(model_path)
         model = YOLO(name)
-        
-        if os.path.exists(name):
-            os.rename(name, full_model_path)
-            print(f"[SUCCESS] Moved {name} to {target_dir}/")
+
+        # If Ultralytics saved a local copy, move/rename it to the desired path
+        local_file = model_path / name
+        if local_file.exists():
+            local_file.rename(full_model_path)
+            print(f"[SUCCESS] Saved {name} to {target_dir}/")
+        else:
+            print(f"[WARNING] {name} was not found in {target_dir} after download.")
+    finally:
+        os.chdir(original_cwd)
 
 print("\n--- All models are ready ---")

@@ -1,19 +1,18 @@
-Background:
+Background section baseline to talk about
 
-In this work, we apply model slicing to YOLO-style detectors, evaluating Subnet‑(r) for 
-(r \in {1.0, 0.8, 0.6, 0.4, 0.2}) on COCO and MOT17/MOT20.
+python version 3.11.9
+--- System Check ---
+PyTorch version: 2.5.1+cu121
+CUDA Available:  True
+GPU Name:       NVIDIA GeForce RTX 4060 Laptop GPU
+CUDA Version:    12.1
 
-Install dependenceis with
-
-.\.venv\Scripts\activate
-python -V
-python -m pip install --upgrade pip
-python -m pip install ultralytics boxmot matplotlib numpy
-
+--- Library Check ---
+Ultralytics (YOLO26): 8.4.21
+BoxMOT Version:       16.0.10
 
 Dev Log 
->   Using python version 3.12.9(actiavate the venv)
->   Using Ultralytics version '8.4.21'
+>   Using (actiavate the venv)
 >   Using YoloV8 Nano, Small and Medium
 >   Using Yolo26 Nano, Small and Medium
 >   Baseline:
