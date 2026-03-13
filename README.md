@@ -1,4 +1,4 @@
-# 8862-Edge-Computing-for-Autonomous-Vehicles
+# 8862-Edge-Computing-for-AR Tasks
 All files and code for our project
 
 all code will be in \main_code, so you can branch \main_code and push your code there

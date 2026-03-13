@@ -7,7 +7,7 @@
 #python -m pip install -r requirements.txt
 
 # Core Deep Learning
-#torch>=2.0.0
+torch>=2.0.0
 torchvision>=0.15.0
 
 # Detection and Tracking
@@ -30,3 +30,8 @@ lapx>=0.5.5               # Linear Assignment Problem solver for tracking
 filterpy>=1.4.5           # Kalman Filter implementations
 pycocotools>=2.0.7        # Necessary for COCO evaluation
 motmetrics>=1.4.0         # To calculate MOTA, MOTP for MOT17/
+
+# --- AR-Specific & 3D Data Handling ---
+open3d>=0.17.0             # Critical for processing ARKitTrack RGB-D/Point Clouds
+pyyaml>=6.0.1              # For parsing ARKitTrack sequence configurations
+trimesh>=4.0.0             # Useful for 3D bounding box geometry in AR

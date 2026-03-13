@@ -49,7 +49,9 @@ import matplotlib.pyplot as plt
 SIZES = ["Nano", "Small", "Medium"]
 
 BASE_DIR   = os.path.dirname(__file__)
-MODELS_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "..", "models", "legacy"))
+# From `baseline/` we only need to go up one level to reach the repo root.
+# Models live under `<repo_root>/models/legacy`.
+MODELS_DIR = os.path.abspath(os.path.join(BASE_DIR, "..", "models", "legacy"))
 
 # weights[size] = (yolov8_weight, yolo26_weight) — always load from models/legacy
 WEIGHTS = {
@@ -101,7 +103,7 @@ def run_coco(weight: str, batch: int = 32) -> float:
     print(f"    COCO  <- {weight}  (batch={batch})")
     try:
         model   = YOLO(weight)
-        metrics = model.val(data=COCO_DATA_YAML, imgsz=640, batch=batch, verbose=False)
+        metrics = model.val(data=COCO_DATA_YAML, imgsz=640, batch=batch, verbose=True)
         return round(float(metrics.box.map), 4)
     except Exception as e:
         print(f"    ERROR: COCO eval failed for {weight}: {e}")
@@ -136,7 +138,9 @@ def run_mot(weight: str, dataset: str) -> float:
     ]
     # Stream stdout/stderr to terminal so user sees progress (download, generate, track, eval).
     proc = subprocess.run(cmd, timeout=3600)
-    json_path = os.path.join(BASE_DIR, "botsort_output.json")
+    # BoxMOT writes botsort_output.json in the current working directory.
+    # Use os.getcwd() so this works whether you run from the repo root or from baseline/.
+    json_path = os.path.join(os.getcwd(), "botsort_output.json")
     hota = _parse_hota_from_json(json_path) if os.path.exists(json_path) else None
 
     if hota is None:
