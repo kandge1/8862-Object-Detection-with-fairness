@@ -1,13 +1,17 @@
-# 8862-Edge-Computing-for-AR Tasks
+## 8862-Edge-Computing-for-AR Tasks
 All files and code for our project
 
-all code will be in \main_code, so you can branch \main_code and push your code there
+All code will be in \main_code, so you can branch \main_code and push your code there
+For example, while getting baseline data, I made a branch named "feature/baseline" and made a folder called "/baseline where all of that code went
 
-or now I have a simulation file I made with claude to just get carla runing, it does not simulate anything very well
-
-all papers and docs will be in \docs, you can push our documents there
-
+All papers and docs will be in \docs, you can push our documents there
 
 This is built with python 3.11
 
-activate the environment with :  yolo_env\Scripts\activate
+# Usage
+To use this codebase, You'll have to first install python 3.11, 
+Then make a virtual environment with: python -m venv .yolo_venv
+Then activate the environment with :  yolo_env\Scripts\activate
+
+Then install the requirements acording to the instructions in requirements.txt in the main folder
+Then install the models 

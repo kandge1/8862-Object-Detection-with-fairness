@@ -1,7 +1,8 @@
-This script will install the models we will use for this paper
+## This script will install the models we will use for this paper
 
 The models are as follows:
-Yolo26n Yolo26s Yolo26m
-Yolo8n Yolo8s Yolo8m
+YoloV8 - n to x
+Yolo12 - n to x
+Yolo26 - n to x
 
 Run the script in the venv with python .\install_models.py

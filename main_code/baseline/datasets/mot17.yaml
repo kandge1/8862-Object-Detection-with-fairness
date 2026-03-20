@@ -1,0 +1,11 @@
+# MOTChallenge MOT17 layout on your SSD (P:/MOT17):
+#   test/MOT17-01-FRCNN/img1/, test/MOT17-02-FRCNN/img1/, ...
+#   train/MOT17-01-FRCNN/img1/, ...
+# We use one test sequence for validation; Ultralytics expects these paths under path.
+path: P:/MOT17
+
+train: train/MOT17-01-FRCNN/img1
+val: test/MOT17-01-FRCNN/img1
+
+nc: 1
+names: ['person']

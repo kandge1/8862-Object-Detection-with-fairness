@@ -20,17 +20,27 @@ Dev Log
             ->Nano
             ->Small
             ->medim
+            ->large
+            ->x-large
+        -> YoloV12
+            ->Nano
+            ->Small
+            ->medim
+            ->large
+            ->x-large
         -> YoloV8
             ->Nano
             ->Small
             ->medim
+            ->large
+            ->x-large
+
     -> Benchmarks chosen
         ->MOT17 for light weight Single object tracking accuracy, Metrics: MOTA, HOTA, IDF1, mAP, IOU
         ->MOT20 for heavy weight Single object tracking accuracy, Metrics: MOTA, HOTA, IDF1, mAP, IOU
-        ->COCO for for object detecion accuracy                 , Metrics: mAP, IOU
-        ->ARKitTrack undeerstanding data and IMU noise          , Metrics: MOTA, HOTA, IDF1, mAP, IOU
-        #maybe the one below
+        ->ARKitTrack understanding data and IMU noise          ,  Metrics: MOTA, HOTA, IDF1, mAP, IOU
         ->DanceTrack for checking rapid motion                  , Metrics: MOTA, HOTA, IDF1, mAP, IOU
+        
     -> Metrics chosen
         ->Higher Order Tracking Accuracy
         ->Multiple Object Tracking Accuracy

@@ -8,8 +8,9 @@ model_path = Path(target_dir)
 model_path.mkdir(parents=True, exist_ok=True)
 
 model_names = [
-    "yolov8n.pt", "yolov8s.pt", "yolov8m.pt",
-    "yolo26n.pt", "yolo26s.pt", "yolo26m.pt"
+    "yolov8n.pt", "yolov8s.pt", "yolov8m.pt","yolov8l.pt", "yolov8x.pt",
+    "yolo12n.pt", "yolo12s.pt", "yolo12m.pt","yolo12l.pt", "yolo12x.pt",
+    "yolo26n.pt", "yolo26s.pt", "yolo26m.pt","yolo26l.pt", "yolo26x.pt",
 ]
 
 print(f"--- Starting Downloads to: {model_path.absolute()} ---")

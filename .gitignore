@@ -2,3 +2,4 @@ yolo_env/
 __MACOSX/
 runs/
 runs.zip
+models/legacy/
