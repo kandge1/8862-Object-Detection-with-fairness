@@ -31,7 +31,11 @@ SIZE_MAP = {
     "x": "X-Large",
 }
 
-METRIC_KEYS = ["MOTA", "HOTA", "IDF1", "mAP", "IOU"]
+# ROMA-style evaluation for pedestrian detection uses mAP.
+# Ultralytics provides:
+# - `results.box.map`   : mAP@0.5:0.95
+# - `results.box.map50` : mAP@0.5
+METRIC_KEYS = ["mAP"]
 
 # Dataset configs: point to data.yaml files inside this repo
 DATASETS_DIR = os.path.join(BASE_DIR, "datasets")
@@ -90,16 +94,22 @@ def discover_models(models_dir: str):
 
 def ensure_csv_with_header(csv_path: str):
     """Create the CSV with header if it does not yet exist."""
-    if os.path.exists(csv_path):
-        return
+    expected_header = ["benchmark", "model_name", "series", "size", *METRIC_KEYS]
 
-    header = [
-        "benchmark",
-        "model_name",
-        "series",
-        "size",
-        *METRIC_KEYS,
-    ]
+    if os.path.exists(csv_path):
+        # If the CSV header doesn't match our expected columns (e.g. after changing METRIC_KEYS),
+        # rename the old file and regenerate with the new header.
+        with open(csv_path, mode="r", encoding="utf-8", newline="") as f:
+            existing_header = next(csv.reader(f, delimiter=","), [])
+
+        if existing_header == expected_header:
+            return
+
+        stem, ext = os.path.splitext(csv_path)
+        backup_path = f"{stem}_old{ext}"
+        os.replace(csv_path, backup_path)
+
+    header = expected_header
 
     with open(csv_path, mode="w", newline="") as f:
         writer = csv.writer(f)
@@ -126,9 +136,7 @@ def append_result_row(csv_path: str, benchmark: str, model_meta: dict, metrics: 
 def evaluate_model_on_benchmark(model_path: str, benchmark: str) -> dict:
     """Run the given model on the given benchmark and return metrics.
 
-    Currently this uses Ultralytics YOLO's built-in `val()` to compute mAP.
-    Tracking metrics (MOTA, HOTA, IDF1, IOU) are left as placeholders for now
-    and should be filled in once your tracking + MOT evaluation pipeline is wired.
+    Currently this uses Ultralytics YOLO's built-in `val()` to compute ROMA-style mAP.
     """
     data_cfg = BENCHMARK_DATA_CONFIGS.get(benchmark)
     if not data_cfg:
@@ -137,18 +145,12 @@ def evaluate_model_on_benchmark(model_path: str, benchmark: str) -> dict:
     model = YOLO(model_path)
     results = model.val(data=data_cfg, verbose=False)
 
-    # Ultralytics v8: results.box.map is mAP50-95
+    # mAP@0.5 for ROMA-style evaluation.
     box_metrics = getattr(results, "box", None)
-    map_value = float(getattr(box_metrics, "map", 0.0)) if box_metrics is not None else 0.0
+    map_value = float(getattr(box_metrics, "map50", getattr(box_metrics, "map", 0.0))) if box_metrics is not None else 0.0
 
-    # TODO: integrate BoxMOT + motmetrics/HOTA here for real tracking metrics.
     return {
-        "MOTA": None,
-        "HOTA": None,
-        "IDF1": None,
         "mAP": map_value,
-        "IOU": None,
-
     }
 
 

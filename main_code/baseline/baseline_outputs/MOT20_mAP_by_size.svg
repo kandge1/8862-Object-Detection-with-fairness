@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="600">
+<rect width="100%" height="100%" fill="white"/>
+<text x="500.0" y="38" text-anchor="middle" font-size="22" font-family="Segoe UI, Arial">MOT20Det against YOLO</text>
+<line x1="85" y1="515" x2="965" y2="515" stroke="#111" stroke-width="2"/>
+<line x1="85" y1="515" x2="85" y2="70" stroke="#111" stroke-width="2"/>
+<line x1="85.00" y1="515" x2="85.00" y2="521" stroke="#111" stroke-width="1"/>
+<text x="85.00" y="543" text-anchor="middle" font-size="14" font-family="Segoe UI, Arial">nano</text>
+<line x1="305.00" y1="515" x2="305.00" y2="521" stroke="#111" stroke-width="1"/>
+<text x="305.00" y="543" text-anchor="middle" font-size="14" font-family="Segoe UI, Arial">small</text>
+<line x1="525.00" y1="515" x2="525.00" y2="521" stroke="#111" stroke-width="1"/>
+<text x="525.00" y="543" text-anchor="middle" font-size="14" font-family="Segoe UI, Arial">medium</text>
+<line x1="745.00" y1="515" x2="745.00" y2="521" stroke="#111" stroke-width="1"/>
+<text x="745.00" y="543" text-anchor="middle" font-size="14" font-family="Segoe UI, Arial">large</text>
+<line x1="965.00" y1="515" x2="965.00" y2="521" stroke="#111" stroke-width="1"/>
+<text x="965.00" y="543" text-anchor="middle" font-size="14" font-family="Segoe UI, Arial">x-large</text>
+<line x1="85" y1="515.00" x2="965" y2="515.00" stroke="#ddd" stroke-width="1"/>
+<text x="75" y="520.00" text-anchor="end" font-size="13" font-family="Segoe UI, Arial">0.443</text>
+<line x1="85" y1="426.00" x2="965" y2="426.00" stroke="#ddd" stroke-width="1"/>
+<text x="75" y="431.00" text-anchor="end" font-size="13" font-family="Segoe UI, Arial">0.489</text>
+<line x1="85" y1="337.00" x2="965" y2="337.00" stroke="#ddd" stroke-width="1"/>
+<text x="75" y="342.00" text-anchor="end" font-size="13" font-family="Segoe UI, Arial">0.535</text>
+<line x1="85" y1="248.00" x2="965" y2="248.00" stroke="#ddd" stroke-width="1"/>
+<text x="75" y="253.00" text-anchor="end" font-size="13" font-family="Segoe UI, Arial">0.582</text>
+<line x1="85" y1="159.00" x2="965" y2="159.00" stroke="#ddd" stroke-width="1"/>
+<text x="75" y="164.00" text-anchor="end" font-size="13" font-family="Segoe UI, Arial">0.628</text>
+<line x1="85" y1="70.00" x2="965" y2="70.00" stroke="#ddd" stroke-width="1"/>
+<text x="75" y="75.00" text-anchor="end" font-size="13" font-family="Segoe UI, Arial">0.675</text>
+<text x="500.0" y="575" text-anchor="middle" font-size="16" font-family="Segoe UI, Arial">Model size</text>
+<text x="22" y="300.0" text-anchor="middle" font-size="16" font-family="Segoe UI, Arial" transform="rotate(-90 22 300.0)">mAP</text>
+<polyline fill="none" stroke="#1f77b4" stroke-width="3" points="85.00,301.70 305.00,185.44 525.00,149.99 745.00,139.12 965.00,160.24"/>
+<circle cx="85.00" cy="301.70" r="4.5" fill="#1f77b4" />
+<circle cx="305.00" cy="185.44" r="4.5" fill="#1f77b4" />
+<circle cx="525.00" cy="149.99" r="4.5" fill="#1f77b4" />
+<circle cx="745.00" cy="139.12" r="4.5" fill="#1f77b4" />
+<circle cx="965.00" cy="160.24" r="4.5" fill="#1f77b4" />
+<polyline fill="none" stroke="#ff7f0e" stroke-width="3" points="85.00,390.15 305.00,203.10 525.00,210.28 745.00,150.96 965.00,108.30"/>
+<circle cx="85.00" cy="390.15" r="4.5" fill="#ff7f0e" />
+<circle cx="305.00" cy="203.10" r="4.5" fill="#ff7f0e" />
+<circle cx="525.00" cy="210.28" r="4.5" fill="#ff7f0e" />
+<circle cx="745.00" cy="150.96" r="4.5" fill="#ff7f0e" />
+<circle cx="965.00" cy="108.30" r="4.5" fill="#ff7f0e" />
+<polyline fill="none" stroke="#2ca02c" stroke-width="3" points="85.00,476.70 305.00,328.29 525.00,244.33 745.00,202.29 965.00,207.16"/>
+<circle cx="85.00" cy="476.70" r="4.5" fill="#2ca02c" />
+<circle cx="305.00" cy="328.29" r="4.5" fill="#2ca02c" />
+<circle cx="525.00" cy="244.33" r="4.5" fill="#2ca02c" />
+<circle cx="745.00" cy="202.29" r="4.5" fill="#2ca02c" />
+<circle cx="965.00" cy="207.16" r="4.5" fill="#2ca02c" />
+<rect x="745" y="58" width="220" height="70" fill="white" stroke="#ccc"/>
+<line x1="757" y1="80" x2="787" y2="80" stroke="#1f77b4" stroke-width="3"/>
+<circle cx="772" cy="80" r="4" fill="#1f77b4"/>
+<text x="797" y="85" font-size="14" font-family="Segoe UI, Arial">YOLO8</text>
+<line x1="757" y1="98" x2="787" y2="98" stroke="#ff7f0e" stroke-width="3"/>
+<circle cx="772" cy="98" r="4" fill="#ff7f0e"/>
+<text x="797" y="103" font-size="14" font-family="Segoe UI, Arial">YOLO12</text>
+<line x1="757" y1="116" x2="787" y2="116" stroke="#2ca02c" stroke-width="3"/>
+<circle cx="772" cy="116" r="4" fill="#2ca02c"/>
+<text x="797" y="121" font-size="14" font-family="Segoe UI, Arial">YOLO26</text>
+</svg>
