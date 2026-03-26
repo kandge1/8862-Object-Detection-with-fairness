@@ -1,0 +1,10 @@
+# MOTChallenge MOT20 layout on your SSD (P:/MOT20):
+#   test/MOT20-01/img1/, test/MOT20-02/img1/, ...
+#   train/MOT20-01/img1/, ...
+path: P:/MOT20
+
+train: train/MOT20-01/img1
+val: test/MOT20-01/img1
+
+nc: 1
+names: ['person']

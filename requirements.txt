@@ -1,0 +1,37 @@
+#Everything built with python 3.11
+
+#First run the following to install the correct version of torch: within the venv
+#pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+#then run the following to install the dependencies: within the venv
+#python -m pip install -r requirements.txt
+
+# Core Deep Learning
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Detection and Tracking
+ultralytics>=8.1.0        # Contains YOLO26
+boxmot>=10.0.0            # Multi-object tracking framework
+
+# Linear Algebra & Data Handling
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
+
+# Image Processing & Visualization
+opencv-python>=4.8.0
+matplotlib>=3.7.0
+pillow>=10.0.0
+
+# MOT Metrics & Specialized Tracking Requirements
+scikit-learn>=1.2.0
+lapx>=0.5.5               # Linear Assignment Problem solver for tracking
+filterpy>=1.4.5           # Kalman Filter implementations
+pycocotools>=2.0.7        # Necessary for COCO evaluation
+motmetrics>=1.4.0         # To calculate MOTA, MOTP for MOT17/
+
+# --- AR-Specific & 3D Data Handling ---
+open3d>=0.17.0             # Critical for processing ARKitTrack RGB-D/Point Clouds
+pyyaml>=6.0.1              # For parsing ARKitTrack sequence configurations
+trimesh>=4.0.0             # Useful for 3D bounding box geometry in AR

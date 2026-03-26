@@ -1,0 +1,25 @@
+# MOT20Det — pedestrian detection (https://motchallenge.net/data/MOT20Det/)
+#
+# 1) Unzip MOT20Det.zip so you have train/<SEQ>/img1 and train/<SEQ>/gt/gt.txt
+# 2) Run:
+#      python main_code/baseline/motdet_to_yolo_labels.py --mot-root P:/MOT20Det --splits train
+# 3) Set `path` below to your MOT20Det root, then validate with this yaml.
+#
+# Official train sequences (4): MOT20-01, MOT20-02, MOT20-03, MOT20-05
+
+path: P:/MOT20Det
+
+train:
+  - train/MOT20-01/images
+  - train/MOT20-02/images
+  - train/MOT20-03/images
+  - train/MOT20-05/images
+
+val:
+  - train/MOT20-01/images
+  - train/MOT20-02/images
+  - train/MOT20-03/images
+  - train/MOT20-05/images
+
+nc: 1
+names: ["person"]
