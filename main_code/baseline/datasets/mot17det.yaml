@@ -1,0 +1,36 @@
+# MOT17Det — pedestrian detection (https://motchallenge.net/data/MOT17Det/)
+#
+# 1) Unzip MOT17Det.zip so you have train/<SEQ>/img1 and train/<SEQ>/gt/gt.txt
+# 2) Run (from repo root):
+#      python main_code/baseline/motdet_to_yolo_labels.py --mot-root P:/MOT17Det --splits train
+#    That creates train/<SEQ>/labels/*.txt and train/<SEQ>/images -> img1 (junction/symlink)
+# 3) Set `path` below to your MOT17Det root, then validate:
+#      yolo val model=yolov8n.pt data=main_code/baseline/datasets/mot17det.yaml split=val
+#
+# Official train sequences (7): MOT17-02, MOT17-04, MOT17-05, MOT17-09, MOT17-10, MOT17-11, MOT17-13
+# Test zip has images but no public GT — use the server for test AP, or only evaluate on train.
+
+path: P:/MOT17Det
+
+train:
+  - train/MOT17-02/images
+  - train/MOT17-04/images
+  - train/MOT17-05/images
+  - train/MOT17-09/images
+  - train/MOT17-10/images
+  - train/MOT17-11/images
+  - train/MOT17-13/images
+
+# For a pretrained-model benchmark you can point val at the same folders as train (full-train mAP).
+# For training experiments, split sequences into train vs val instead.
+val:
+  - train/MOT17-02/images
+  - train/MOT17-04/images
+  - train/MOT17-05/images
+  - train/MOT17-09/images
+  - train/MOT17-10/images
+  - train/MOT17-11/images
+  - train/MOT17-13/images
+
+nc: 1
+names: ["person"]

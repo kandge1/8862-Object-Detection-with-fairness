@@ -38,12 +38,8 @@ Dev Log
     -> Benchmarks chosen
         ->MOT17 for light weight Single object tracking accuracy, Metrics: MOTA, HOTA, IDF1, mAP, IOU
         ->MOT20 for heavy weight Single object tracking accuracy, Metrics: MOTA, HOTA, IDF1, mAP, IOU
-        ->ARKitTrack understanding data and IMU noise          ,  Metrics: MOTA, HOTA, IDF1, mAP, IOU
-        ->DanceTrack for checking rapid motion                  , Metrics: MOTA, HOTA, IDF1, mAP, IOU
-        
+
     -> Metrics chosen
-        ->Higher Order Tracking Accuracy
-        ->Multiple Object Tracking Accuracy
-        ->Identification F1 score
         ->mAP
-        ->Intersection over Union against ground truth. 
+
+Usage should be plug in the prepared SSD and 

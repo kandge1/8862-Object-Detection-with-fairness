@@ -38,8 +38,10 @@ DATASETS_DIR = os.path.join(BASE_DIR, "datasets")
 os.makedirs(DATASETS_DIR, exist_ok=True)
 
 BENCHMARK_DATA_CONFIGS = {
-    "MOT17": os.path.join(DATASETS_DIR, "mot17.yaml"),
-    "MOT20": os.path.join(DATASETS_DIR, "mot20.yaml"),
+    # ROMA uses MOT17Det/MOT20Det (pedestrian detection) metrics, so we must use the
+    # detection YAMLs that point to YOLO-convertible labels.
+    "MOT17": os.path.join(DATASETS_DIR, "mot17det.yaml"),
+    "MOT20": os.path.join(DATASETS_DIR, "mot20det.yaml"),
 }
 
 
