@@ -3,3 +3,5 @@ __MACOSX/
 runs/
 runs.zip
 models/legacy/
+baseline_full.log
+baseline_full.err.log
