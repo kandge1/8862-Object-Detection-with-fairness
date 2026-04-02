@@ -14,4 +14,3 @@ Then make a virtual environment with: python -m venv .yolo_venv
 Then activate the environment with :  yolo_env\Scripts\activate
 
 Then install the requirements acording to the instructions in requirements.txt in the main folder
-Then install the models 
