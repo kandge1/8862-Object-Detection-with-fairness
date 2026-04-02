@@ -1,8 +1,9 @@
-## 8862-Edge-Computing-for-AR Tasks
+## 8862-Object-Detection-with-fairness
 All files and code for our project
 
 All code will be in \main_code, so you can branch \main_code and push your code there
-For example, while getting baseline data, I made a branch named "feature/baseline" and made a folder called "/baseline where all of that code went
+For example, while getting baseline data, I made a branch named "feature/baseline" and made a folder called "/baseline" inside of "/main_code" 
+where all of that code went
 
 All papers and docs will be in \docs, you can push our documents there
 
