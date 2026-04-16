@@ -31,10 +31,12 @@ def _normalize_size(size: str) -> str:
 def load_resolution_sweep(csv_path: str, benchmark: str = "MOT17"):
     """
     Returns:
-      data[size][resolution] = mAP
+      map_data[size][resolution] = mAP
+      time_data[size][resolution] = benchmark_time_sec
       resolutions_sorted = sorted list of resolutions found
     """
-    data = defaultdict(dict)
+    map_data = defaultdict(dict)
+    time_data = defaultdict(dict)
     resolutions = set()
 
     with open(csv_path, "r", encoding="utf-8", newline="") as f:
@@ -45,12 +47,14 @@ def load_resolution_sweep(csv_path: str, benchmark: str = "MOT17"):
 
             raw_resolution = row.get("resolution")
             raw_map = row.get("mAP")
+            raw_time = row.get("benchmark_time_sec")
             if not raw_resolution or raw_map in (None, ""):
                 continue
 
             try:
                 resolution = int(float(raw_resolution))
                 map_value = float(raw_map)
+                time_value = float(raw_time) if raw_time not in (None, "") else None
             except ValueError:
                 continue
 
@@ -58,11 +62,13 @@ def load_resolution_sweep(csv_path: str, benchmark: str = "MOT17"):
             if size not in SIZE_ORDER:
                 continue
 
-            data[size][resolution] = map_value
+            map_data[size][resolution] = map_value
+            if time_value is not None:
+                time_data[size][resolution] = time_value
             resolutions.add(resolution)
 
     resolutions_sorted = sorted(resolutions)
-    return data, resolutions_sorted
+    return map_data, time_data, resolutions_sorted
 
 
 def _svg_escape(s: str) -> str:
@@ -76,7 +82,14 @@ def _svg_escape(s: str) -> str:
     )
 
 
-def _write_svg_line_chart(*, out_path: str, x_values: list[int], series_to_y: dict[str, list[float | None]], title: str):
+def _write_svg_line_chart(
+    *,
+    out_path: str,
+    x_values: list[int],
+    series_to_y: dict[str, list[float | None]],
+    title: str,
+    y_label: str,
+):
     width, height = 1100, 650
     margin_left, margin_right, margin_top, margin_bottom = 90, 40, 70, 90
 
@@ -94,11 +107,11 @@ def _write_svg_line_chart(*, out_path: str, x_values: list[int], series_to_y: di
     else:
         y_min, y_max = min(all_y), max(all_y)
         pad = max(0.02, (y_max - y_min) * 0.08)
-        y_min = max(0.0, y_min - pad)
-        y_max = min(1.0, y_max + pad)
+        y_min = y_min - pad
+        y_max = y_max + pad
         if abs(y_max - y_min) < 1e-9:
-            y_min = max(0.0, y_min - 0.05)
-            y_max = min(1.0, y_max + 0.05)
+            y_min = y_min - 0.05
+            y_max = y_max + 0.05
 
     xmin, xmax = min(x_values), max(x_values)
 
@@ -150,7 +163,7 @@ def _write_svg_line_chart(*, out_path: str, x_values: list[int], series_to_y: di
         f'<text x="{width/2:.1f}" y="{height-25}" text-anchor="middle" font-size="16" font-family="Segoe UI, Arial">Resolution (imgsz)</text>'
     )
     parts.append(
-        f'<text x="22" y="{height/2:.1f}" text-anchor="middle" font-size="16" font-family="Segoe UI, Arial" transform="rotate(-90 22 {height/2:.1f})">mAP</text>'
+        f'<text x="22" y="{height/2:.1f}" text-anchor="middle" font-size="16" font-family="Segoe UI, Arial" transform="rotate(-90 22 {height/2:.1f})">{_svg_escape(y_label)}</text>'
     )
 
     for size_tick, ys in series_to_y.items():
@@ -188,8 +201,8 @@ def _write_svg_line_chart(*, out_path: str, x_values: list[int], series_to_y: di
         f.write("\n".join(parts))
 
 
-def plot_resolution_vs_map(data: dict, resolutions: list[int], out_path: str, show: bool):
-    series = {
+def _build_series(data: dict, resolutions: list[int]):
+    return {
         "n": [data.get("Nano", {}).get(r, None) for r in resolutions],
         "s": [data.get("Small", {}).get(r, None) for r in resolutions],
         "m": [data.get("Medium", {}).get(r, None) for r in resolutions],
@@ -197,13 +210,26 @@ def plot_resolution_vs_map(data: dict, resolutions: list[int], out_path: str, sh
         "x": [data.get("X-Large", {}).get(r, None) for r in resolutions],
     }
 
+
+def plot_resolution_vs_metric(
+    data: dict,
+    resolutions: list[int],
+    out_path: str,
+    show: bool,
+    *,
+    title: str,
+    y_label: str,
+):
+    series = _build_series(data, resolutions)
+
     if plt is None:
         svg_path = os.path.splitext(out_path)[0] + ".svg"
         _write_svg_line_chart(
             out_path=svg_path,
             x_values=resolutions,
             series_to_y=series,
-            title="MOT17Det: mAP vs Resolution (YOLOv8 n/s/m/l/x)",
+            title=title,
+            y_label=y_label,
         )
         return svg_path
 
@@ -211,9 +237,9 @@ def plot_resolution_vs_map(data: dict, resolutions: list[int], out_path: str, sh
     for label, ys in series.items():
         ax.plot(resolutions, ys, marker="o", linewidth=2, label=f"YOLOv8{label}")
 
-    ax.set_title("MOT17Det: mAP vs Resolution (YOLOv8 n/s/m/l/x)")
+    ax.set_title(title)
     ax.set_xlabel("Resolution (imgsz)")
-    ax.set_ylabel("mAP")
+    ax.set_ylabel(y_label)
     ax.set_xticks(resolutions)
     ax.grid(True, alpha=0.3)
     ax.legend()
@@ -248,16 +274,45 @@ def main():
         ),
         help="Output plot path (.png; falls back to .svg if matplotlib is unavailable)",
     )
+    parser.add_argument(
+        "--time-out",
+        default=os.path.join(
+            os.path.dirname(__file__),
+            "resolution_sweep_outputs",
+            "mot17det_time_vs_resolution.png",
+        ),
+        help="Output path for benchmark-time plot (.png; falls back to .svg if matplotlib is unavailable)",
+    )
     parser.add_argument("--benchmark", default="MOT17", help="Benchmark name to filter (default: MOT17)")
     parser.add_argument("--show", action="store_true", help="Display plot interactively")
     args = parser.parse_args()
 
-    data, resolutions = load_resolution_sweep(args.csv, benchmark=args.benchmark)
+    map_data, time_data, resolutions = load_resolution_sweep(args.csv, benchmark=args.benchmark)
     if not resolutions:
         raise SystemExit(f"No rows found for benchmark '{args.benchmark}' in CSV: {args.csv}")
 
-    saved_path = plot_resolution_vs_map(data, resolutions, args.out, args.show)
-    print(f"Saved plot: {saved_path}")
+    map_plot_path = plot_resolution_vs_metric(
+        map_data,
+        resolutions,
+        args.out,
+        args.show,
+        title=f"{args.benchmark}Det: mAP vs Resolution (YOLOv8 n/s/m/l/x)",
+        y_label="mAP",
+    )
+    print(f"Saved mAP plot: {map_plot_path}")
+
+    if any(time_data.get(size, {}) for size in SIZE_ORDER):
+        time_plot_path = plot_resolution_vs_metric(
+            time_data,
+            resolutions,
+            args.time_out,
+            args.show,
+            title=f"{args.benchmark}Det: Benchmark Time vs Resolution (YOLOv8 n/s/m/l/x)",
+            y_label="Benchmark Time (sec)",
+        )
+        print(f"Saved benchmark-time plot: {time_plot_path}")
+    else:
+        print("No benchmark_time_sec values found in CSV; skipped benchmark-time plot.")
 
 
 if __name__ == "__main__":

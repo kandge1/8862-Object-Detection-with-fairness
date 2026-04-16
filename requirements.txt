@@ -1,14 +1,8 @@
-#Everything built with python 3.11
-
-#First run the following to install the correct version of torch: within the venv
-#pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-
-#then run the following to install the dependencies: within the venv
-#python -m pip install -r requirements.txt
-
-# Core Deep Learning
-torch>=2.0.0
-torchvision>=0.15.0
+# Everything built with Python 3.11
+# Install CUDA-enabled PyTorch first (inside venv), e.g.:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+# Then install remaining deps:
+# python -m pip install -r requirements.txt
 
 # Detection and Tracking
 ultralytics>=8.1.0        # Contains YOLO26
