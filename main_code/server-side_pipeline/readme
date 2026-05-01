@@ -1,1 +1,5 @@
+running code:
+python3 server_pipeline_v5.py
+python3 client_v2.py --frames-folder xx/xxx
 
+Please replace xx/xxx with the actual path to the dataset folder before running the command.
