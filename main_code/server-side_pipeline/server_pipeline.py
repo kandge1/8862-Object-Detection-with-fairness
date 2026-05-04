@@ -1,182 +1,350 @@
-# In this version:
-# Use local images as uploaded frames
-# Run real YOLO26n inference
-# Ouput results as annotated images 
-
-from dataclasses import dataclass, asdict
-from typing import List, Optional, Dict, Any
-from pathlib import Path
+# Model pool loading, est from client
 import json
 import time
+import asyncio
+import heapq
+import os
+import re
+from pathlib import Path
+from dataclasses import dataclass, asdict
+from typing import List, Optional, Dict, Any, Tuple
 
 import cv2
+import uvicorn
+from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.responses import JSONResponse
 from ultralytics import YOLO
+import torch
+
+# ============================================================
+# 1. Constants and data structures
+# ============================================================
+
+# Python 3.8 compatible typing: use Dict/List instead of dict[]/list[].
+mAP_table: Dict[str, Dict[str, float]] = {
+    "yolov8n_288": {"map": 0.3222, "time": 1.9438},
+    "yolov8s_288": {"map": 0.3879, "time": 2.0587},
+    "yolov8m_288": {"map": 0.4425, "time": 2.3455},
+    "yolov8l_288": {"map": 0.4578, "time": 2.7165},
+    "yolov8x_288": {"map": 0.4699, "time": 3.6420},
+    "yolov8n_416": {"map": 0.4412, "time": 2.5249},
+    "yolov8s_416": {"map": 0.4899, "time": 2.3857},
+    "yolov8m_416": {"map": 0.5200, "time": 2.9933},
+    "yolov8l_416": {"map": 0.5211, "time": 4.0068},
+    "yolov8x_416": {"map": 0.5357, "time": 5.3583},
+    "yolov8n_640": {"map": 0.5433, "time": 3.0423},
+    "yolov8s_640": {"map": 0.5838, "time": 3.3686},
+    "yolov8m_640": {"map": 0.5933, "time": 5.0350},
+    "yolov8l_640": {"map": 0.5846, "time": 7.0360},
+    "yolov8x_640": {"map": 0.6017, "time": 10.1924},
+    "yolov8n_864": {"map": 0.5871, "time": 3.7886},
+    "yolov8s_864": {"map": 0.6183, "time": 4.4741},
+    "yolov8m_864": {"map": 0.6143, "time": 7.7156},
+    "yolov8l_864": {"map": 0.6148, "time": 11.0286},
+    "yolov8x_864": {"map": 0.6276, "time": 16.8240},
+    "yolov8n_1088": {"map": 0.6041, "time": 4.7502},
+    "yolov8s_1088": {"map": 0.6316, "time": 6.4990},
+    "yolov8m_1088": {"map": 0.6300, "time": 11.4111},
+    "yolov8l_1088": {"map": 0.6305, "time": 16.2437},
+    "yolov8x_1088": {"map": 0.6360, "time": 24.8706},
+}
+
+# Model pool: preload yolov8 n/s/m/l/x onto GPU at program start.
+# Override with env, e.g.:
+#   MODEL_POOL=yolov8n:yolov8n.pt,yolov8s:yolov8s.pt python3 server_pipeline_v4_model_pool.py
+DEFAULT_MODEL_POOL_SPEC = "yolov8n:model/yolov8n.pt,yolov8s:model/yolov8s.pt,yolov8m:model/yolov8m.pt,yolov8l:model/yolov8l.pt,yolov8x:model/yolov8x.pt"
+MODEL_POOL_SPEC = os.environ.get("MODEL_POOL", DEFAULT_MODEL_POOL_SPEC)
+DEFAULT_SERVER_MODEL_NAME = os.environ.get("DEFAULT_SERVER_MODEL_NAME", "yolov8n")
+DEFAULT_SERVER_IMGSZ = int(os.environ.get("DEFAULT_SERVER_IMGSZ", "640"))
+CONF_THRESHOLD = float(os.environ.get("CONF_THRESHOLD", "0.25"))
+DEVICE = os.environ.get("DEVICE", "cuda:0" if torch.cuda.is_available() else "cpu")
 
 
-# 1. Define client state
-@dataclass
-class ClientState:
-    user_id: int
-    current_frame_id: int
-    tracking_age: int
-    last_offload_frame_id: int
-
-
-# 2. Define scheduler output
-@dataclass
-class ScheduleDecision:
-    user_id: int
-    offload_period: int
-
-
-# 3. Define inference request
 @dataclass
 class InferenceRequest:
     request_id: int
     user_id: int
     frame_id: int
     frame_path: str
-    arrival_time: int
+    arrival_time: float
+    opt_model: str
+    est_map: float
+    est_time: float
+    tracking_age: int
+    capture_time: float = 0.0
+    client_fps: float = 0.0
+
+    @property
+    def response_key(self) -> str:
+        # request_id may restart from 0 for each client, so include user_id.
+        return f"u{self.user_id}_r{self.request_id}"
 
 
-# 4. Define scheduler
-class Scheduler:
-    def decide(self, client_state: ClientState) -> ScheduleDecision:
-        # Placeholder decision logic
-        return ScheduleDecision(
-            user_id=client_state.user_id,
-            offload_period=3
+# ============================================================
+# 2. Queue and batch scheduling logic
+# ============================================================
+
+class PriorityRequestQueue:
+    def __init__(self, age_penalty: float = 0.01) -> None:
+        self.heap: List[Tuple[float, float, int, int, InferenceRequest]] = []
+        self.age_penalty = age_penalty
+
+    def push(self, request: InferenceRequest, current_time: float) -> None:
+        # Current test mode: FIFO by arrival time. Keeps behavior simple.
+        dynamic_priority = request.arrival_time
+        heapq.heappush(
+            self.heap,
+            (dynamic_priority, request.arrival_time, request.user_id, request.request_id, request),
         )
 
-
-# 5. Define client simulator
-class ClientSimulator:
-    def __init__(self, user_id: int, frame_paths: List[str]) -> None:
-        self.user_id = user_id
-        self.frame_paths = frame_paths
-        self.total_frames = len(frame_paths)
-        self.current_frame_id = 0
-
-        self.tracking_age = 0
-        self.last_offload_frame_id = -1
-        self.offload_period = 3
-
-    def get_state(self) -> ClientState:
-        return ClientState(
-            user_id=self.user_id,
-            current_frame_id=self.current_frame_id,
-            tracking_age=self.tracking_age,
-            last_offload_frame_id=self.last_offload_frame_id
-        )
-
-    def apply_schedule(self, decision: ScheduleDecision) -> None:
-        self.offload_period = decision.offload_period
-
-    def maybe_generate_request(
-        self,
-        request_id: int,
-        current_time: int
-    ) -> Optional[InferenceRequest]:
-        if self.current_frame_id >= self.total_frames:
+    def pop_matching(self, target_model: str) -> Optional[InferenceRequest]:
+        matching_items = [item for item in self.heap if item[4].opt_model == target_model]
+        if not matching_items:
             return None
-
-        should_offload = (self.current_frame_id % self.offload_period == 0)
-
-        if should_offload:
-            req = InferenceRequest(
-                request_id=request_id,
-                user_id=self.user_id,
-                frame_id=self.current_frame_id,
-                frame_path=self.frame_paths[self.current_frame_id],
-                arrival_time=current_time
-            )
-            self.last_offload_frame_id = self.current_frame_id
-            self.tracking_age = 0
-            return req
-
-        self.tracking_age += 1
-        return None
-
-    def step(self) -> None:
-        self.current_frame_id += 1
-
-
-# 6. Define queue
-class RequestQueue:
-    def __init__(self) -> None:
-        self.items: List[InferenceRequest] = []
-
-    def push(self, request: InferenceRequest) -> None:
-        self.items.append(request)
+        best_match = min(matching_items, key=lambda x: x[0])
+        self.heap.remove(best_match)
+        heapq.heapify(self.heap)
+        return best_match[4]
 
     def pop(self) -> Optional[InferenceRequest]:
-        if not self.items:
+        if not self.heap:
             return None
-        return self.items.pop(0)
+        return heapq.heappop(self.heap)[4]
+
+    def get_sum_map(self, model: str, b1_time: float) -> Tuple[float, float]:
+        if not self.heap:
+            return 0.0, 0.0
+        if model not in mAP_table:
+            model = "yolov8n_640"
+
+        total_map = 0.0
+        map_square = 0.0
+        model_time = mAP_table[model]["time"]
+        total_est_time = len(self.heap) * model_time + b1_time
+
+        for item in self.heap:
+            base_map = item[4].est_map
+            penalized_map = max(0.0, base_map - (total_est_time * self.age_penalty))
+            total_map += penalized_map
+            map_square += penalized_map ** 2
+        return total_map, map_square
+
+    def get_opt_model(self) -> str:
+        if not self.heap:
+            return "yolov8n_640"
+        sum_map = sum(item[4].est_map for item in self.heap)
+        avg_map = sum_map / len(self.heap)
+        return min(mAP_table.keys(), key=lambda model_name: abs(mAP_table[model_name]["map"] - avg_map))
 
     def size(self) -> int:
-        return len(self.items)
+        return len(self.heap)
 
     def is_empty(self) -> bool:
-        return len(self.items) == 0
+        return len(self.heap) == 0
 
 
-# 7. Build batch
-# Just a simple batch frame: trigger inference when the number of queued requests reaches the predefined batch size
-def build_batch(queue: RequestQueue, batch_size: int) -> List[InferenceRequest]:
+def _safe_model_key(model: str) -> str:
+    return model if model in mAP_table else "yolov8n_640"
+
+
+def calculate_sum_map(batch: List[InferenceRequest], model: str, age_penalty: float = 0.01) -> Tuple[float, float, float]:
+    if not batch:
+        return 0.0, 0.0, 0.0
+    model = _safe_model_key(model)
+    total_map = 0.0
+    map_square = 0.0
+    model_time = mAP_table[model]["time"]
+    total_est_time = len(batch) * model_time
+
+    for req in batch:
+        penalized_map = max(0.0, req.est_map - (total_est_time * age_penalty))
+        total_map += penalized_map
+        map_square += penalized_map ** 2
+    return total_map, map_square, total_est_time
+
+
+def batch_get_opt_model(batch: List[InferenceRequest]) -> str:
+    if not batch:
+        return "yolov8n_640"
+    avg_map = sum(item.est_map for item in batch) / len(batch)
+    return min(mAP_table.keys(), key=lambda model_name: abs(mAP_table[model_name]["map"] - avg_map))
+
+
+def build_batch(queue: PriorityRequestQueue) -> List[InferenceRequest]:
     batch: List[InferenceRequest] = []
+    if queue.is_empty():
+        return batch
 
-    for _ in range(batch_size):
-        req = queue.pop()
-        if req is None:
+    total_size = queue.size()
+    first_req = queue.pop()
+    if first_req is None:
+        return batch
+
+    b1_model = _safe_model_key(first_req.opt_model)
+    b2_model = queue.get_opt_model()
+    batch.append(first_req)
+
+    b1_map, b1_map_square, b1_time = calculate_sum_map(batch, b1_model)
+    b2_map, b2_map_square = queue.get_sum_map(b2_model, b1_time)
+    avg_map = (b1_map + b2_map) / total_size
+    denominator = total_size * (b1_map_square + b2_map_square)
+    jain = ((b1_map + b2_map) ** 2 / denominator) if denominator > 0 else 1.0
+    current_score = avg_map + jain
+
+    while not queue.is_empty():
+        candidate = queue.pop_matching(first_req.opt_model)
+        if candidate is None:
+            candidate = queue.pop()
+        if candidate is None:
             break
-        batch.append(req)
+
+        test_batch = batch + [candidate]
+        b1_model = batch_get_opt_model(test_batch)
+        b2_model = queue.get_opt_model()
+
+        b1_map, b1_map_square, b1_time = calculate_sum_map(test_batch, b1_model)
+        b2_map, b2_map_square = queue.get_sum_map(b2_model, b1_time)
+        avg_map = (b1_map + b2_map) / total_size
+        test_denom = total_size * (b1_map_square + b2_map_square)
+        jain = ((b1_map + b2_map) ** 2 / test_denom) if test_denom > 0 else 1.0
+        test_score = avg_map + jain
+
+        if test_score > current_score:
+            batch.append(candidate)
+            current_score = test_score
+        else:
+            queue.push(candidate, candidate.arrival_time)
+            break
 
     return batch
 
 
-# 8. Model selector
-class ModelSelector:
-    def select_model(self, info: Dict[str, int]) -> str:
-        # For now, always use YOLO26n as requested
-        return "yolo26n"
+# ============================================================
+# 3. YOLO inference utilities
+# ============================================================
+
+def parse_model_pool_spec(spec: str) -> Dict[str, str]:
+    pool: Dict[str, str] = {}
+    for item in spec.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if ":" in item:
+            name, path = item.split(":", 1)
+        else:
+            path = item
+            name = Path(path).stem
+        pool[name.strip()] = path.strip()
+    return pool
 
 
-# 9. YOLO detector
-class YOLODetector:
-    def __init__(self, model_path: str) -> None:
-        self.model = YOLO(model_path)
-
-    def infer_batch(self, image_paths: List[str]):
-        # verbose=False to suppress terminal output
-        return self.model(image_paths, verbose=False)
+def model_name_from_opt_model(opt_model: str) -> str:
+    # Example: yolov8n_640 -> yolov8n. Falls back to default if parsing fails.
+    match = re.match(r"yolov8([nslmx])_\d+", opt_model or "")
+    if not match:
+        return DEFAULT_SERVER_MODEL_NAME
+    return f"yolov8{match.group(1)}"
 
 
-# 10. Result helpers
+def imgsz_from_opt_model(opt_model: str) -> int:
+    # Example: yolov8n_640 -> 640. Falls back to default if parsing fails.
+    match = re.match(r"yolov8[nslmx]_(\d+)", opt_model or "")
+    if not match:
+        return DEFAULT_SERVER_IMGSZ
+    return int(match.group(1))
+
+
+class YOLOModelPool:
+    def __init__(self, pool_spec: str, device: str) -> None:
+        self.device = device
+        self.model_paths = parse_model_pool_spec(pool_spec)
+        if not self.model_paths:
+            raise ValueError("MODEL_POOL is empty; provide at least one model_name:model_path pair.")
+
+        self.models: Dict[str, YOLO] = {}
+        print(f"Loading YOLO model pool on device={device}...")
+        for name, model_path in self.model_paths.items():
+            print(f"  loading {name}: {model_path}")
+            model = YOLO(model_path)
+            model.to(device)
+            self.models[name] = model
+        print(f"Model pool ready: {list(self.models.keys())}")
+
+    def resolve_model_name(self, opt_model: str) -> str:
+        requested = model_name_from_opt_model(opt_model)
+        if requested in self.models:
+            return requested
+        if DEFAULT_SERVER_MODEL_NAME in self.models:
+            return DEFAULT_SERVER_MODEL_NAME
+        return next(iter(self.models.keys()))
+
+    def infer_batch(self, model_name: str, image_paths: List[str], imgsz: int = 640):
+        model_name = model_name if model_name in self.models else self.resolve_model_name(model_name)
+        return self.models[model_name](image_paths, imgsz=imgsz, conf=CONF_THRESHOLD, device=self.device, verbose=False)
+
+
 def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def extract_detection_summary(result) -> Dict[str, Any]:
-    boxes = result.boxes
+def _read_image_shape(image_path: str) -> Dict[str, Any]:
+    img = cv2.imread(image_path)
+    if img is None:
+        return {"height": None, "width": None, "channels": None, "shape_hw": None}
+    h, w = img.shape[:2]
+    c = img.shape[2] if len(img.shape) == 3 else 1
+    return {"height": int(h), "width": int(w), "channels": int(c), "shape_hw": [int(h), int(w)]}
 
-    detections = []
+
+def extract_detection_summary(result, source_image_path: str) -> Dict[str, Any]:
+    """
+    Return KCF-ready detection data.
+    KCF needs bbox in xywh: (x, y, width, height).
+    Client can still use bbox_xyxy for drawing red server boxes.
+    """
+    image_info = _read_image_shape(source_image_path)
+    img_w = image_info.get("width")
+    img_h = image_info.get("height")
+
+    boxes = result.boxes
+    detections: List[Dict[str, Any]] = []
+
     if boxes is not None:
         for i in range(len(boxes)):
-            xyxy = boxes.xyxy[i].tolist()
+            xyxy_raw = boxes.xyxy[i].tolist()
+            x1, y1, x2, y2 = [float(v) for v in xyxy_raw]
+
+            # Clamp to image bounds if available. KCF dislikes invalid boxes.
+            if img_w is not None and img_h is not None:
+                x1 = max(0.0, min(x1, float(img_w - 1)))
+                y1 = max(0.0, min(y1, float(img_h - 1)))
+                x2 = max(0.0, min(x2, float(img_w - 1)))
+                y2 = max(0.0, min(y2, float(img_h - 1)))
+
+            w = max(0.0, x2 - x1)
+            h = max(0.0, y2 - y1)
             conf = float(boxes.conf[i].item())
             cls_id = int(boxes.cls[i].item())
             cls_name = result.names.get(cls_id, str(cls_id))
+            is_valid_for_kcf = bool(w >= 2.0 and h >= 2.0 and conf >= CONF_THRESHOLD)
 
             detections.append({
+                "track_id": None,
                 "class_id": cls_id,
                 "class_name": cls_name,
                 "confidence": conf,
-                "bbox_xyxy": [float(v) for v in xyxy],
+                "bbox_xyxy": [x1, y1, x2, y2],
+                "bbox_xyxy_int": [int(round(x1)), int(round(y1)), int(round(x2)), int(round(y2))],
+                "bbox_xywh": [x1, y1, w, h],
+                "bbox_xywh_int": [int(round(x1)), int(round(y1)), int(round(w)), int(round(h))],
+                "area": float(w * h),
+                "is_valid_for_kcf": is_valid_for_kcf,
+                "source": "server_yolo_detection",
             })
 
     return {
         "image_path": result.path,
+        "image": image_info,
         "num_detections": len(detections),
         "detections": detections,
     }
@@ -187,144 +355,213 @@ def save_annotated_image(result, save_path: Path) -> None:
     cv2.imwrite(str(save_path), plotted)
 
 
-# 11. Batch inference execution
-def run_batch_inference(
-    batch: List[InferenceRequest],
-    detector: YOLODetector,
-    output_dir: Path
-) -> List[Dict[str, Any]]:
-    image_paths = [req.frame_path for req in batch]
-    results = detector.infer_batch(image_paths)
+# ============================================================
+# 4. FastAPI server application
+# ============================================================
 
-    batch_records: List[Dict[str, Any]] = []
+app = FastAPI(title="Edge-to-Cloud YOLO Server - KCF Ready")
 
-    for req, result in zip(batch, results):
-        request_dir = output_dir / f"user_{req.user_id}" / f"frame_{req.frame_id:04d}"
-        ensure_dir(request_dir)
+global_queue = PriorityRequestQueue(age_penalty=0.01)
+model_pool = YOLOModelPool(MODEL_POOL_SPEC, DEVICE)
 
-        summary = extract_detection_summary(result)
-        summary["request"] = asdict(req)
+UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", "server_uploads"))
+OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", "server_outputs"))
+ensure_dir(UPLOAD_DIR)
+ensure_dir(OUTPUT_DIR)
 
-        annotated_path = request_dir / "annotated.jpg"
-        save_annotated_image(result, annotated_path)
-
-        json_path = request_dir / "result.json"
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(summary, f, indent=2, ensure_ascii=False)
-
-        batch_records.append({
-            "request_id": req.request_id,
-            "user_id": req.user_id,
-            "frame_id": req.frame_id,
-            "frame_path": req.frame_path,
-            "annotated_image": str(annotated_path),
-            "result_json": str(json_path),
-            "num_detections": summary["num_detections"],
-        })
-
-    return batch_records
+pending_responses: Dict[str, asyncio.Future] = {}
+_batch_counter = 0
 
 
-# 12. Utility: load frames from folder
-def load_frame_paths(folder: str) -> List[str]:
-    exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
-    paths = sorted(
-        str(p) for p in Path(folder).iterdir()
-        if p.suffix.lower() in exts
-    )
-    return paths
+async def _resolve_future(req: InferenceRequest, payload: Dict[str, Any]) -> None:
+    future = pending_responses.pop(req.response_key, None)
+    if future and not future.done():
+        future.set_result(payload)
 
 
-# 13. Main
-def main() -> None:
-    model_path = "yolo26n.pt"
-    output_dir = Path("outputs")
-    ensure_dir(output_dir)
+async def batch_processing_worker():
+    global _batch_counter
+    print("Background batch processing worker started...")
+    print(f"Inference backend: model_pool={list(model_pool.models.keys())}, device={DEVICE}")
 
-    # Prepare local frame sequences
-    user1_frames = load_frame_paths("frames/user1")
-    user2_frames = load_frame_paths("frames/user2")
-
-    if len(user1_frames) == 0 or len(user2_frames) == 0:
-        raise FileNotFoundError(
-            "No input images found. Please put images into frames/user1 and frames/user2."
-        )
-
-    scheduler = Scheduler()
-    queue = RequestQueue()
-    model_selector = ModelSelector()
-    detector = YOLODetector(model_path=model_path)
-
-    clients = [
-        ClientSimulator(user_id=1, frame_paths=user1_frames),
-        ClientSimulator(user_id=2, frame_paths=user2_frames),
-    ]
-
-    next_request_id = 0
-    batch_size = 2
-    total_steps = max(len(user1_frames), len(user2_frames))
-
-    run_summary: Dict[str, Any] = {
-        "model": "yolo26n",
-        "batch_size": batch_size,
-        "total_steps": total_steps,
-        "batches": [],
-    }
-
-    for current_time in range(total_steps):
-        for client in clients:
-            if client.current_frame_id >= client.total_frames:
+    while True:
+        if not global_queue.is_empty():
+            batch = build_batch(global_queue)
+            if not batch:
+                await asyncio.sleep(0.01)
                 continue
 
-            state = client.get_state()
-            decision = scheduler.decide(state)
-            client.apply_schedule(decision)
+            _batch_counter += 1
+            batch_id = _batch_counter
+            inference_start = time.time()
+            image_paths = [req.frame_path for req in batch]
 
-        for client in clients:
-            req = client.maybe_generate_request(
-                request_id=next_request_id,
-                current_time=current_time
-            )
-            if req is not None:
-                queue.push(req)
-                next_request_id += 1
+            batch_opt_model = batch_get_opt_model(batch)
+            actual_model_name = model_pool.resolve_model_name(batch_opt_model)
+            actual_imgsz = imgsz_from_opt_model(batch_opt_model)
 
-        if queue.size() >= batch_size:
-            batch = build_batch(queue, batch_size=batch_size)
+            try:
+                results = model_pool.infer_batch(actual_model_name, image_paths, imgsz=actual_imgsz)
+                inference_finish = time.time()
+            except Exception as exc:
+                inference_finish = time.time()
+                for req in batch:
+                    await _resolve_future(req, {
+                        "status": "error",
+                        "error": "inference_failed",
+                        "detail": str(exc),
+                        "request_id": req.request_id,
+                        "user_id": req.user_id,
+                        "frame_id": req.frame_id,
+                    })
+                await asyncio.sleep(0.01)
+                continue
 
-            selector_input = {
-                "queue_length": len(batch),
-                "batch_size": len(batch),
-                "active_users": len(clients),
-            }
-            selected_model = model_selector.select_model(selector_input)
+            batch_request_ids = [req.request_id for req in batch]
+            batch_user_ids = [req.user_id for req in batch]
 
-            if selected_model != "yolo26n":
-                raise ValueError("This script is configured to run YOLO26n only.")
+            for req, result in zip(batch, results):
+                request_dir = OUTPUT_DIR / f"user_{req.user_id}" / f"frame_{req.frame_id:06d}"
+                ensure_dir(request_dir)
 
-            t0 = time.time()
-            batch_records = run_batch_inference(
-                batch=batch,
-                detector=detector,
-                output_dir=output_dir
-            )
-            t1 = time.time()
+                summary = extract_detection_summary(result, req.frame_path)
+                summary["request"] = asdict(req)
+                summary["server_model"] = actual_model_name
+                summary["server_model_path"] = model_pool.model_paths.get(actual_model_name)
+                summary["server_imgsz"] = actual_imgsz
 
-            run_summary["batches"].append({
-                "time_step": current_time,
-                "batch_size": len(batch),
-                "latency_sec": t1 - t0,
-                "records": batch_records,
-            })
+                annotated_path = request_dir / "annotated.jpg"
+                save_annotated_image(result, annotated_path)
 
-        for client in clients:
-            if client.current_frame_id < client.total_frames:
-                client.step()
+                json_path = request_dir / "result.json"
+                with open(json_path, "w", encoding="utf-8") as f:
+                    json.dump(summary, f, indent=2, ensure_ascii=False)
 
-    summary_path = output_dir / "run_summary.json"
-    with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump(run_summary, f, indent=2, ensure_ascii=False)
+                now = time.time()
+                client_response = {
+                    "status": "success",
+                    "request_id": req.request_id,
+                    "user_id": req.user_id,
+                    "frame_id": req.frame_id,
+
+                    # What the client originally requested/hinted.
+                    "client_hint": {
+                        "opt_model": req.opt_model,
+                        "est_map": req.est_map,
+                        "est_time": req.est_time,
+                        "tracking_age": req.tracking_age,
+                        "client_fps": req.client_fps,
+                        "capture_time": req.capture_time,
+                    },
+
+                    # What server actually used now.
+                    "server_inference": {
+                        "model_name": actual_model_name,
+                        "model_path": model_pool.model_paths.get(actual_model_name),
+                        "imgsz": actual_imgsz,
+                        "conf_threshold": CONF_THRESHOLD,
+                    },
+
+                    "batch": {
+                        "batch_id": batch_id,
+                        "batch_size": len(batch),
+                        "request_ids": batch_request_ids,
+                        "user_ids": batch_user_ids,
+                    },
+
+                    "timing": {
+                        "arrival_time": req.arrival_time,
+                        "inference_start_time": inference_start,
+                        "inference_finish_time": inference_finish,
+                        "response_time": now,
+                        "queue_wait_sec": inference_start - req.arrival_time,
+                        "batch_inference_latency_sec": inference_finish - inference_start,
+                        "server_total_latency_sec": now - req.arrival_time,
+                    },
+
+                    # Useful to debug paths. annotated_image_path is on SERVER machine.
+                    "paths": {
+                        "server_input_image_path": req.frame_path,
+                        "annotated_image_path": str(annotated_path),
+                        "result_json": str(json_path),
+                    },
+
+                    # KCF-ready fields.
+                    "image": summary["image"],
+                    "num_detections": summary["num_detections"],
+                    "detections": summary["detections"],
+                }
+
+                await _resolve_future(req, client_response)
+
+        await asyncio.sleep(0.01)
+
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(batch_processing_worker())
+
+
+@app.post("/infer")
+async def receive_inference_request(
+    request_id: int = Form(...),
+    user_id: int = Form(...),
+    frame_id: int = Form(...),
+    opt_model: str = Form(...),
+    est_map: float = Form(...),
+    est_time: float = Form(...),
+    tracking_age: int = Form(...),
+    capture_time: float = Form(0.0),
+    client_fps: float = Form(0.0),
+    file: UploadFile = File(...),
+):
+    arrival_time = time.time()
+
+    safe_name = Path(file.filename or f"frame_{frame_id}.jpg").name
+    file_location = UPLOAD_DIR / f"req{request_id}_u{user_id}_f{frame_id}_{safe_name}"
+    with open(file_location, "wb+") as f:
+        f.write(await file.read())
+
+    req = InferenceRequest(
+        request_id=request_id,
+        user_id=user_id,
+        frame_id=frame_id,
+        frame_path=str(file_location),
+        arrival_time=arrival_time,
+        opt_model=opt_model,
+        est_map=est_map,
+        est_time=est_time,
+        tracking_age=tracking_age,
+        capture_time=capture_time,
+        client_fps=client_fps,
+    )
+
+    loop = asyncio.get_running_loop()
+    future = loop.create_future()
+    pending_responses[req.response_key] = future
+    global_queue.push(req, arrival_time)
+
+    try:
+        result = await future
+        return JSONResponse(content=result)
+    except asyncio.CancelledError:
+        pending_responses.pop(req.response_key, None)
+        return JSONResponse(status_code=499, content={"error": "Client Closed Request"})
+
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "queue_size": global_queue.size(),
+        "pending_responses": len(pending_responses),
+        "model_pool": model_pool.model_paths,
+        "default_server_model_name": DEFAULT_SERVER_MODEL_NAME,
+        "default_server_imgsz": DEFAULT_SERVER_IMGSZ,
+        "device": DEVICE,
+        "conf_threshold": CONF_THRESHOLD,
+    }
 
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run(app, host="0.0.0.0", port=8000)
